@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AIRA Global Guide - Mobile</title>
+    <style>
+        :root {
+            --primary: #2c3e50;
+            --accent: #3498db;
+            --bg: #f8f9fa;
+            --white: #ffffff;
+        }
+
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; background: var(--bg); overflow: hidden; height: 100vh; }
+
+        /* ヘッダー */
+        header { 
+            height: 110px; background: var(--primary); color: white;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            position: relative; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .header-top { display: flex; width: 90%; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .app-title { font-weight: bold; font-size: 1.1rem; letter-spacing: 1px; }
+        
+        select { background: rgba(255,255,255,0.2); color: white; border: 1px solid white; border-radius: 5px; padding: 4px 8px; outline: none; }
+        select option { color: black; }
+
+        /* フィルタースクロール */
+        .filter-scroll { display: flex; gap: 8px; width: 95%; overflow-x: auto; padding: 5px 0; scrollbar-width: none; }
+        .filter-scroll::-webkit-scrollbar { display: none; }
+        .chip { 
+            background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+            border-radius: 20px; padding: 6px 15px; font-size: 0.8rem; white-space: nowrap; cursor: pointer; transition: 0.2s;
+        }
+        .chip.active { background: var(--accent); border-color: white; font-weight: bold; }
+
+        /* メインビューコンテナ */
+        .view-container { position: relative; height: calc(100vh - 160px); overflow: hidden; }
+        #map-view, #list-view { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; transition: 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+        }
+        
+        /* リストビューの切り替えアニメーション */
+        #list-view { transform: translateX(100%); background: var(--bg); overflow-y: auto; padding-bottom: 80px; }
+        .show-list #list-view { transform: translateX(0); }
+        .show-list #map-view { transform: translateX(-100%); }
+
+        iframe { border: none; width: 100%; height: 100%; }
+
+        /* GPSボタン */
+        #gps-btn {
+            position: absolute; bottom: 20px; right: 20px;
+            background: var(--white); border: none; border-radius: 50%; width: 56px; height: 56px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25); z-index: 50; cursor: pointer; font-size: 1.5rem;
+            display: flex; align-items: center; justify-content: center;
+        }
+
+        /* スポットカード */
+        .spot-card { 
+            background: var(--white); margin: 15px; border-radius: 12px; overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .card-body { padding: 16px; }
+        .card-tag { font-size: 0.7rem; color: var(--accent); font-weight: bold; text-transform: uppercase; margin-bottom: 4px; display: block; }
+        .card-title { font-size: 1.2rem; font-weight: bold; margin: 0 0 8px 0; color: var(--primary); }
+        .card-desc { font-size: 0.9rem; color: #666; line-height: 1.5; margin-bottom: 15px; }
+        .btn-detail { background: var(--accent); color: white; border: none; padding: 10px; border-radius: 8px; font-weight: bold; width: 100%; font-size: 0.9rem; }
+
+        /* ボトムナビゲーション */
+        nav { 
+            height: 50px; background: var(--white); border-top: 1px solid #eee;
+            display: flex; justify-content: space-around; align-items: center;
+            position: fixed; bottom: 0; width: 100%; z-index: 200;
+        }
+        .nav-item { border: none; background: none; color: #999; font-size: 0.8rem; cursor: pointer; flex: 1; height: 100%; transition: 0.2s; font-weight: bold; }
+        .nav-item.active { color: var(--accent); border-top: 3px solid var(--accent); }
+
+        /* ボトムシート */
+        #bottom-sheet {
+            position: fixed; bottom: -100%; left: 0; width: 100%; height: 75%;
+            background: var(--white); border-radius: 24px 24px 0 0; z-index: 1000;
+            transition: 0.4s ease-out; box-shadow: 0 -10px 30px rgba(0,0,0,0.15);
+            padding: 24px; box-sizing: border-box; overflow-y: auto;
+        }
+        #bottom-sheet.open { bottom: 0; }
+        .handle { width: 40px; height: 4px; background: #e0e0e0; border-radius: 10px; margin: -10px auto 20px; }
+        .detail-label { font-size: 0.75rem; font-weight: bold; color: #999; margin-top: 20px; display: block; letter-spacing: 1px; }
+        .detail-text { margin: 4px 0 0 0; font-size: 1rem; color: var(--primary); line-height: 1.5; }
+    </style>
+</head>
+<body id="app-body">
+
+<header>
+    <div class="header-top">
+        <div class="app-title">AIRA GLOBAL GUIDE</div>
+        <select id="lang-select" onchange="switchLang(this.value)">
+            <option value="ja">日本語</option>
+            <option value="en">English</option>
+        </select>
+    </div>
+    <div class="filter-scroll" id="filter-container"></div>
+</header>
+
+<div class="view-container">
+    <div id="map-view">
+        <button id="gps-btn" onclick="getMyLocation()">📍</button>
+        <iframe id="main-map" src=""></iframe>
+    </div>
+    <div id="list-view">
+        <div id="spot-list"></div>
+    </div>
+</div>
+
+<nav>
+    <button class="nav-item active" id="nav-map" onclick="toggleView('map')">MAP</button>
+    <button class="nav-item" id="nav-list" onclick="toggleView('list')">LIST</button>
+</nav>
+
+<div id="bottom-sheet">
+    <div class="handle" onclick="closeSheet()"></div>
+    <div id="sheet-content"></div>
+</div>
+
+<script>
+    // 1. スポットデータ
+    const spots = [
+        {
+            id: 'shigetomi',
+            cat: 'nature',
+            name: { ja: "🏖️ 重富海水浴場", en: "🏖️ Shigetomi Beach" },
+            address: "鹿児島県姶良市平松7703-4",
+            desc: { ja: "桜島を望む絶景のビーチ。広大な干潟は生き物の宝庫です。", en: "A beach with a stunning view of Mt. Sakurajima. Famous for its tidal flats." },
+            access: { ja: "JR姶良駅から徒歩10分", en: "10-min walk from JR Aira Station" }
+        },
+        {
+            id: 'kamou',
+            cat: 'history',
+            name: { ja: "🌳 蒲生の大楠", en: "🌳 Great Camphor of Kamou" },
+            address: "鹿児島県姶良市蒲生町上久徳2259-1",
+            desc: { ja: "樹齢約1500年、日本一の巨樹。蒲生八幡神社の境内にあります。", en: "The largest tree in Japan (1,500 years old). Located in Kamou Hachiman Shrine." },
+            access: { ja: "JR帖佐駅からバスで20分「蒲生小学校前」下車", en: "20-min bus from JR Chosa Sta. to 'Kamou Shogakko-mae'" }
+        },
+        {
+            id: 'ryumon_falls',
+            cat: 'nature',
+            name: { ja: "🌊 龍門滝", en: "🌊 Ryumon Falls" },
+            address: "鹿児島県姶良市加治木町木田5266-1",
+            desc: { ja: "日本の滝百選の一つ。高さ46m、幅43mのダイナミックな滝です。", en: "One of Japan's Top 100 Waterfalls. A very dynamic 46m-high waterfall." },
+            access: { ja: "JR加治木駅から車で約5分", en: "5-min drive from JR Kajiki Station" }
+        },
+        {
+            id: 'tatsumonji',
+            cat: 'history',
+            name: { ja: "🛣️ 龍門司坂", en: "🛣️ Tatsumonji-zaka Slope" },
+            address: "鹿児島県姶良市加治木町木田5088-1",
+            desc: { ja: "旧大口筋の一部で、当時の面影を残す美しい石畳の坂道です。", en: "An ancient stone-paved path preserving the atmosphere of the Edo period." },
+            access: { ja: "JR加治木駅から徒歩約20分", en: "20-min walk from JR Kajiki Station" }
+        }
+    ];
+
+    const categories = {
+        all: { ja: "すべて", en: "All" },
+        nature: { ja: "自然", en: "Nature" },
+        history: { ja: "歴史", en: "History" }
+    };
+
+    let currentLang = 'ja';
+    let currentCat = 'all';
+
+    // 2. 言語切り替え
+    function switchLang(lang) {
+        currentLang = lang;
+        document.getElementById('nav-map').innerText = (lang === 'ja') ? 'マップ' : 'MAP';
+        document.getElementById('nav-list').innerText = (lang === 'ja') ? 'リスト' : 'LIST';
+        renderFilters();
+        renderList();
+    }
+
+    // 3. カテゴリフィルター描画
+    function renderFilters() {
+        const container = document.getElementById('filter-container');
+        container.innerHTML = '';
+        for (let key in categories) {
+            const chip = document.createElement('div');
+            chip.className = `chip ${currentCat === key ? 'active' : ''}`;
+            chip.innerText = categories[key][currentLang];
+            chip.onclick = () => { currentCat = key; renderFilters(); renderList(); };
+            container.appendChild(chip);
+        }
+    }
+
+    // 4. リスト描画
+    function renderList() {
+        const listContainer = document.getElementById('spot-list');
+        listContainer.innerHTML = '';
+        const filtered = spots.filter(s => currentCat === 'all' || s.cat === currentCat);
+
+        filtered.forEach(spot => {
+            const card = document.createElement('div');
+            card.className = 'spot-card';
+            card.innerHTML = `
+                <div class="card-body">
+                    <span class="card-tag">${categories[spot.cat][currentLang]}</span>
+                    <h3 class="card-title">${spot.name[currentLang]}</h3>
+                    <p class="card-desc">${spot.desc[currentLang]}</p>
+                    <button class="btn-detail" onclick="openDetail('${spot.id}')">
+                        ${currentLang === 'ja' ? '詳細を見る' : 'Show Details'}
+                    </button>
+                </div>
+            `;
+            listContainer.appendChild(card);
+        });
+    }
+
+    // 5. ボトムシート表示
+    function openDetail(id) {
+        const spot = spots.find(s => s.id === id);
+        const content = document.getElementById('sheet-content');
+        content.innerHTML = `
+            <h2 style="margin:0; color:var(--primary)">${spot.name[currentLang]}</h2>
+            <p style="color:#666; line-height:1.6">${spot.desc[currentLang]}</p>
+            <span class="detail-label">📍 ADDRESS</span>
+            <p class="detail-text">${spot.address}</p>
+            <span class="detail-label">🚌 ACCESS</span>
+            <p class="detail-text">${spot.access[currentLang]}</p>
+            <button class="btn-detail" style="margin-top:30px; padding:15px" onclick="updateMap('${spot.address}')">
+                ${currentLang === 'ja' ? '地図で場所を表示' : 'View on Map'}
+            </button>
+        `;
+        document.getElementById('bottom-sheet').classList.add('open');
+    }
+
+    function closeSheet() { document.getElementById('bottom-sheet').classList.remove('open'); }
+
+    // 6. ビュー切り替え
+    function toggleView(view) {
+        const body = document.getElementById('app-body');
+        const navMap = document.getElementById('nav-map');
+        const navList = document.getElementById('nav-list');
+
+        if (view === 'list') {
+            body.classList.add('show-list');
+            navList.classList.add('active');
+            navMap.classList.remove('active');
+        } else {
+            body.classList.remove('show-list');
+            navMap.classList.add('active');
+            navList.classList.remove('active');
+        }
+    }
+
+    // 7. マップ更新（エラー回避用の安定版URL）
+    function updateMap(address) {
+        const iframe = document.getElementById('main-map');
+        // Googleマップ公式の埋め込み形式
+        const encoded = encodeURIComponent(address);
+        iframe.src = `https://maps.google.com/maps?q=${encoded}&output=embed&hl=${currentLang}&z=16`;
+        closeSheet();
+        toggleView('map');
+    }
+
+    // 8. GPS現在地
+    function getMyLocation() {
+        if (!navigator.geolocation) return alert("GPS非対応のブラウザです");
+        navigator.geolocation.getCurrentPosition(pos => {
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            document.getElementById('main-map').src = `https://maps.google.com/maps?q=${lat},${lng}&output=embed&hl=${currentLang}&z=16`;
+        }, () => alert("現在地を取得できませんでした。設定を確認してください。"));
+    }
+
+    // 初期起動
+    window.onload = () => { 
+        renderFilters(); 
+        renderList();
+        // 最初は姶良市全体を表示
+        updateMap("鹿児島県姶良市");
+    };
+</script>
+
+</body>
+</html>
